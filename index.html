@@ -1138,16 +1138,22 @@ muteBtn.textContent = muted ? '🔇' : '🔊';
 function updateFruits(dt, ts) {
   for (let i = fruits.length - 1; i >= 0; i--) {
     const f = fruits[i];
-    // 磁铁：把非炸弹水果吸向手指
+    // 磁铁：把非炸弹水果吸向手指（强吸力，可对抗重力）
     if (magnetTime > 0 && lastPointer && f.state === 'alive' && !f.bomb) {
       const dx = lastPointer.x - f.x, dy = lastPointer.y - f.y;
       const dist = Math.hypot(dx, dy);
-      if (dist > 1) {
-        const pull = Math.min(1200, 12000 / (dist + 80)) * dt;
-        f.vx += (dx / dist) * pull;
-        f.vy += (dy / dist) * pull;
+      if (dist > 2) {
+        const force = Math.min(2800, 2800 * 220 / (dist + 90));
+        f.vx += (dx / dist) * force * dt;
+        f.vy += (dy / dist) * force * dt;
+        // 削弱远离手指方向的速度分量，让水果更容易被吸住
+        const dot = (f.vx * dx + f.vy * dy) / dist;
+        if (dot < 0) {
+          f.vx += (dx / dist) * (-dot) * 0.55;
+          f.vy += (dy / dist) * (-dot) * 0.55;
+        }
         const spd = Math.hypot(f.vx, f.vy);
-        if (spd > H * 1.7) { f.vx *= H * 1.7 / spd; f.vy *= H * 1.7 / spd; }
+        if (spd > H * 1.9) { f.vx *= H * 1.9 / spd; f.vy *= H * 1.9 / spd; }
       }
     }
     f.x += f.vx * dt * ts;
@@ -1391,6 +1397,14 @@ function render() {
     ctx.strokeStyle = 'rgba(255,64,129,' + pulse.toFixed(3) + ')';
     ctx.lineWidth = 8;
     ctx.strokeRect(8, 8, W - 16, H - 16);
+    if (lastPointer) {
+      const rr = 22 + Math.sin(gameTime * 10) * 6;
+      ctx.strokeStyle = 'rgba(255,64,129,0.75)';
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.arc(lastPointer.x, lastPointer.y, rr, 0, TAU);
+      ctx.stroke();
+    }
   }
   if (redFlash > 0) {
     ctx.fillStyle = 'rgba(255,0,0,' + (redFlash * 0.5).toFixed(3) + ')';
