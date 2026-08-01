@@ -180,6 +180,18 @@ const FRUIT_TYPES = [
   { key: 'peach',      score: 1, r: 30, juice: '#ffb6a3' },
   { key: 'lemon',      score: 2, r: 28, juice: '#fff176' },
 ];
+
+/* ========================= 水果图片预加载 ========================= */
+// 每款水果对应一张透明 PNG（assets/fruits/<key>.png），切半由 drawHalf 的 clip 自动裁剪
+const fruitImgs = {};
+function loadFruitImgs() {
+  for (const t of FRUIT_TYPES) {
+    const img = new Image();
+    img.src = 'assets/fruits/' + t.key + '.png';
+    fruitImgs[t.key] = img;
+  }
+}
+loadFruitImgs();
 const POWERUPS = {
   frozen:   { color: '#5ac8fa', label: '冰冻' },
   double:   { color: '#ff9500', label: '双倍' },
@@ -200,6 +212,7 @@ let dying = false;         // play 内的死亡过渡
 let gameOverDelay = 0;
 let score = 0, best = 0, lives = 3;
 let elapsed = 0, spawnTimer = 0;
+let lastSpecialTime = -10;  // 道具刷新限流：上次出道具的游戏时间
 let gameTime = 0, lastTs = 0;
 let freezeTime = 0, doubleTime = 0, frenzyTime = 0;
 let magnetTime = 0, slowTime = 0;
@@ -428,15 +441,10 @@ function drawLemon(ctx, r) {
 }
 
 function drawFruitShape(ctx, key, r) {
-  switch (key) {
-    case 'watermelon': drawWatermelon(ctx, r); break;
-    case 'apple':      drawApple(ctx, r); break;
-    case 'orange':     drawOrange(ctx, r); break;
-    case 'banana':     drawBanana(ctx, r); break;
-    case 'pineapple':  drawPineapple(ctx, r); break;
-    case 'kiwi':       drawKiwi(ctx, r); break;
-    case 'peach':      drawPeach(ctx, r); break;
-    case 'lemon':      drawLemon(ctx, r); break;
+  const img = fruitImgs[key];
+  if (img && img.complete && img.naturalWidth) {
+    // 以 (0,0) 为中心、2r 为边长绘制；图片水果长边已填满画布，故水果外接尺寸≈2r
+    ctx.drawImage(img, -r, -r, r * 2, r * 2);
   }
 }
 
@@ -601,12 +609,24 @@ function spawnSpecial() {
   fruits.push(makeFruitObj({ special: kind, r: 34, juice: POWERUPS[kind].color }));
 }
 
+// 道具刷新限流：避免 zen 等模式后期道具堆积、发光特效叠加导致卡顿
+function canSpawnSpecial() {
+  // zen 更稀疏（间隔 5s、同屏最多 2 个）；经典模式间隔 3s、最多 3 个
+  const minInterval = mode === 'zen' ? 5 : 3;
+  const maxOnscreen = mode === 'zen' ? 2 : 3;
+  if (gameTime - lastSpecialTime < minInterval) return false;
+  let onscreen = 0;
+  for (let i = 0; i < fruits.length; i++) if (fruits[i].special) onscreen++;
+  return onscreen < maxOnscreen;
+}
+
 function spawnFromBottom(d) {
   const roll = Math.random();
   if (mode !== 'zen' && roll < d.bomb) {
     fruits.push(makeFruitObj({ bomb: true, r: rand(26, 33), juice: '#333' }));
-  } else if (roll < d.special) {
+  } else if (roll < d.special && canSpawnSpecial()) {
     spawnSpecial();
+    lastSpecialTime = gameTime;
   } else {
     const t = pickType();
     fruits.push(makeFruitObj({ type: t.key, r: t.r * rand(0.9, 1.1), score: t.score, juice: t.juice }));
@@ -631,8 +651,9 @@ function spawnFromEdge() {
   const roll = Math.random();
   if (mode !== 'zen' && roll < 0.1) {
     fruits.push(makeFruitObj({ x, y, vx, vy, bomb: true, r: rand(26, 33) }));
-  } else if (roll < 0.2) {
+  } else if (roll < 0.2 && canSpawnSpecial()) {
     fruits.push(makeFruitObj({ x, y, vx, vy, special: POWERUP_KEYS[randInt(0, POWERUP_KEYS.length - 1)], r: 34, juice: '#fff' }));
+    lastSpecialTime = gameTime;
   } else {
     const t = pickType();
     fruits.push(makeFruitObj({ x, y, vx, vy, type: t.key, r: t.r * rand(0.9, 1.1), score: t.score, juice: t.juice }));
@@ -1443,6 +1464,7 @@ function startGame(m) {
   frenzyTime = 0;
   magnetTime = 0;
   slowTime = 0;
+  lastSpecialTime = -10;
   globalCombo = 0;
   globalComboTimer = 0;
   flash = 0;
